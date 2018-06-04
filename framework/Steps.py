@@ -894,6 +894,7 @@ class IOStep(Step):
       @ Out, None
     """
     outputs = self.__getOutputs(inDictionary)
+    # perform the requested actions based on the actionType
     for i in range(len(outputs)):
       if self.actionType[i] == 'HDF5-dataObjects':
         #inDictionary['Input'][i] is HDF5, outputs[i] is a DataObjects
@@ -934,11 +935,13 @@ class IOStep(Step):
         # reseed as requested
         if reseedInt is not None:
           outputs[i].reseed(reseedInt)
+
       elif self.actionType[i] == 'FILES-dataObjects':
         #inDictionary['Input'][i] is a Files, outputs[i] is PointSet
         infile = inDictionary['Input'][i]
         options = {'fileToLoad':infile}
         outputs[i].load(inDictionary['Input'][i].getPath(),'csv',**options)
+
       else:
         self.raiseAnError(IOError,"Unknown action type "+self.actionType[i])
     for output in inDictionary['Output']:

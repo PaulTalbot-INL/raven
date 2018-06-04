@@ -13,4 +13,17 @@
    #csv = 'ARMAparallel/writeSynDataOut_0.csv'
    #rel_err = 0.1
   [../]
+
+ [./PrecursorFixed]
+   type = 'RavenFramework'
+   input = 'precursor_fixed.xml'
+   output = 'Precursors/fixed.pk'
+   csv = 'Precursors/fixed_samples_ds.csv Precursors/fixed_samples_hs.csv Precursors/fixed_samples_hs_0.csv Precursors/fixed_samples_hs_1.csv'
+  [../]
+ [./PrecursorRandom]
+   type = 'RavenFramework'
+   input = 'precursor_random.xml'
+   output = 'Precursors/random.pk'
+   csv = 'Precursors/random_samples_ds.csv Precursors/random_samples_hs.csv Precursors/random_samples_hs_0.csv Precursors/random_samples_hs_1.csv'
+  [../]
 []
