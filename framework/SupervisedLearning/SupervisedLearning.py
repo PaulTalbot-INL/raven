@@ -95,7 +95,8 @@ class supervisedLearning(utils.metaclass_insert(abc.ABCMeta),MessageHandler.Mess
     """
     self.printTag          = 'Supervised'
     self.messageHandler    = messageHandler
-    self._dynamicHandling = False
+    self._dynamicHandling  = False
+    self._solutionExport   = None # in case of outputs from training
     #booleanFlag that controls the normalization procedure. If true, the normalization is performed. Default = True
     if kwargs != None:
       self.initOptionDict = kwargs
