@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <Simulation verbosity="debug">
-    
+
   <TestInfo>
     <name>framework/ROM/TimeSeries/PolyExponential.PolyExpNearest</name>
     <author>alfoa</author>
@@ -14,7 +14,7 @@
       <revision author="alfoa" date="2018-04-25">Adding this test description.</revision>
     </revisions>
   </TestInfo>
-  
+
     <RunInfo>
         <WorkingDir>PolyExpNearest</WorkingDir>
 	    <Sequence>
@@ -74,6 +74,7 @@
 		<RomTrainer name='PolyTrain'>
 			<Input    class = 'DataObjects' type = 'HistorySet'    >rawData</Input>
 			<Output   class='Models'        type ='ROM'  	       >PolyExp</Output>
+			<SolutionExport class='DataObjects' type ='HistorySet'   >TrainData</SolutionExport>
 		</RomTrainer>
         <IOStep name='pickleRom'>
             <Input    class = 'Models'      type = 'ROM'           >PolyExp</Input>
@@ -102,7 +103,7 @@
             <what>coefficients,timeScale</what>
         </Print>
     </OutStreams>
-	
+
     <DataObjects>
       <PointSet name="dataIn">
         <Input>enrichment,burnup</Input>
@@ -111,6 +112,12 @@
       <HistorySet name="rawData">
         <Input>enrichment,burnup</Input>
         <Output>decay_heat,decay_heat_pu</Output>
+        <options>
+            <pivotParameter>t</pivotParameter>
+        </options>
+      </HistorySet>
+      <HistorySet name="TrainData">
+        <Output>trial</Output>
         <options>
             <pivotParameter>t</pivotParameter>
         </options>

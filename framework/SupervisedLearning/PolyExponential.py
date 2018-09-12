@@ -75,7 +75,6 @@ class PolyExponential(supervisedLearning):
     if self.pivotParameterID not in self.target:
       self.raiseAnError(IOError,"The pivotParameter "+self.pivotParameterID+" must be part of the Target space!")
 
-
   def _localNormalizeData(self,values,names,feat):
     """
       Overwrites default normalization procedure.
@@ -331,4 +330,3 @@ class PolyExponential(supervisedLearning):
       @ Out, self.polyExpParams, dict, the dict of the SM settings
     """
     return self.polyExpParams
-

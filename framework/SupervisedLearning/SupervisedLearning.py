@@ -119,13 +119,13 @@ class supervisedLearning(utils.metaclass_insert(abc.ABCMeta),MessageHandler.Mess
     #these need to be declared in the child classes!!!!
     self.amITrained         = False
 
-  def initialize(self,idict):
+  def initialize(self,initDict):
     """
       Initialization method
-      @ In, idict, dict, dictionary of initialization parameters
+      @ In, initDict, dict, dictionary of initialization parameters
       @ Out, None
     """
-    pass #Overloaded by (at least) GaussPolynomialRom
+    self._solutionExport = initDict.get('SolutionExport',None)
 
   def train(self,tdict):
     """

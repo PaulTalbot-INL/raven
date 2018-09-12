@@ -742,6 +742,7 @@ class RomTrainer(Step):
       @ Out, None
     """
     Step.__init__(self)
+    self._romInitDict = {} #this is a dictionary that gets sent as key-worded list to the initialization of the sampler
     self.printTag = 'STEP ROM TRAINER'
 
   def _localInputAndCheckParam(self,paramInput):
@@ -756,8 +757,9 @@ class RomTrainer(Step):
     if [item[0] for item in self.parList].count('Output')<1:
       self.raiseAnError(IOError,'At least one Output is need in a training step. Step name: '+str(self.name))
     for item in self.parList:
-      if item[0]=='Output' and item[2] not in ['ROM']:
-        self.raiseAnError(IOError,'Only ROM output class are allowed in a training step. Step name: '+str(self.name))
+      if item[0]=='Output' and item[2] not in ['ROM','PointSet','HistorySet','DataSet']:
+        self.raiseAnError(IOError,'Only ROM output class are allowed in a training step. Got "{}" for step "{}"'
+                                  .format(item[2],self.name))
 
   def _localGetInitParams(self):
     """
@@ -779,7 +781,13 @@ class RomTrainer(Step):
       @ In, inDictionary, dict, the initialization dictionary
       @ Out, None
     """
-    pass
+    if 'SolutionExport' in inDictionary.keys():
+      self._romInitDict['solutionExport']=inDictionary['SolutionExport']
+    for out in inDictionary['Output']:
+      if isinstance(out,Models.ROM):
+        out.initialize(inDictionary['jobHandler'].runInfoDict,
+                       inDictionary['Input'],
+                       initDict=self._romInitDict)
 
   def _localTakeAstepRun(self,inDictionary):
     """
@@ -788,8 +796,11 @@ class RomTrainer(Step):
       @ Out, None
     """
     #Train the ROM... It is not needed to add the trainingSet since it's already been added in the initialization method
-    for ROM in inDictionary['Output']:
-      ROM.train(inDictionary['Input'][0])
+    for entry in inDictionary['Output']:
+      if isinstance(entry,Models.ROM):
+        entry.train(inDictionary['Input'][0])
+      else:
+        print('DEBUGG TODO do anything for soln export?')
 #
 #
 #

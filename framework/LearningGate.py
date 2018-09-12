@@ -56,6 +56,7 @@ class supervisedLearningGate(utils.metaclass_insert(abc.ABCMeta,BaseType),Messag
     self.initializationOptions   = kwargs
     self.amITrained              = False
     self.ROMclass                = ROMclass
+    self._romInitDict            = None # ROM initialization dictionary for engines
     #the ROM is instanced and initialized
     #if ROM comes from a pickled rom, this gate is just a placeholder and the Targets check doesn't apply
     self.pickled = self.initializationOptions.pop('pickled',False)
@@ -123,6 +124,19 @@ class supervisedLearningGate(utils.metaclass_insert(abc.ABCMeta,BaseType),Messag
     """
     paramDict = self.supervisedContainer[-1].returnInitialParameters()
     return paramDict
+
+  def setInitializationDict(self,initDict):
+    """
+      Calls the "initialize" method on the ROMs that are part of this ROM.
+      @ In, initDict, dict, initialization options
+      @ Out, None
+    """
+    # TODO not all ROMs can be initialized this way
+    ## for example, what if a ROM cannot handle dynamic data, and has a solutionExport? We don't want to write to
+    ## the solutionExport many times! Maybe the LearningGate should be the only one to interact with the solnExp?
+    self._romInitDict = initDict
+    for rom in self.supervisedContainer:
+      rom.initialize(self._romInitDict)
 
   def train(self,trainingSet):
     """

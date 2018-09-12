@@ -268,6 +268,7 @@ class GaussPolynomialRom(supervisedLearning):
       @ In, idict, dict, objects needed to initalize
       @ Out, None
     """
+    self.supervisedLearning.initialize(self,idict)
     self.sparseGrid     = idict.get('SG'        ,None)
     self.distDict       = idict.get('dists'     ,None)
     self.quads          = idict.get('quads'     ,None)

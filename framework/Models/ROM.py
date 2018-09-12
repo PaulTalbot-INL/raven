@@ -283,6 +283,16 @@ class ROM(Dummy):
     """
     self.supervisedEngine = LearningGate.returnInstance('SupervisedGate', self.subType, self,**initializationOptions)
 
+  def initialize(self, runInfo, inputs, initDict=None):
+    """
+      Initializes any additional post-input-reading and post-step-initialization elements before running.
+      @ In, runInfo, dict, run info from the jobHandler
+      @ In, inputs, list, list of "input" entities identified in the step input
+      @ In, initDict, dict, optional, dictionary of objects available from the step to the model.
+      @ Out, None
+    """
+    self.supervisedEngine.setInitializationDict(initDict)
+
   def printXML(self,options={}):
     """
       Called by the OutStreamPrint object to cause the ROM to print itself to file.
