@@ -31,7 +31,7 @@ import itertools
 import statsmodels.api as sm # VARMAX is in sm.tsa
 from statsmodels.tsa.arima_model import ARMA as smARMA
 import numpy as np
-from scipy import optimize
+from scipy import optimize, stats
 from scipy.linalg import solve_discrete_lyapunov
 from sklearn import linear_model, neighbors
 #External Modules End--------------------------------------------------------------------------------
@@ -642,13 +642,23 @@ class ARMA(supervisedLearning):
       @ In, params, dict, CDF parameters (as constructed by "_trainCDF")
       @ Out, y, float, value of inverse CDF at x
     """
+    dist = stats.beta(params['alpha'],
+                      params['beta'],
+                      loc=params['loc'],
+                      scale=params['scale'])
+    y = dist.pdf(x)
+    print('DEBUGG y:',y)
+    return y
+    #### OLD ####
     # TODO could this be covered by an empirical distribution from Distributions?
     # set up I/O
     x = np.atleast_1d(x)
     y = np.zeros(x.shape)
     # create masks for data outside range (above, below), inside range of empirical CDF
     belowMask = x <= params['bins'][0]
-    aboveMask = x >= params['bins'][-1]
+    aboveMask = x > params['bins'][-1]
+    print('DEBUGG below:',x[belowMask])
+    print('DEBUGG above:',x[aboveMask])
     inMask = np.logical_and(np.logical_not(belowMask), np.logical_not(aboveMask))
     # outside CDF set to min, max CDF values
     y[belowMask] = params['cdf'][0]
@@ -663,6 +673,8 @@ class ARMA(supervisedLearning):
     y = self._interpolateDist(x,y,Xlow,Xhigh,Ylow,Yhigh,inMask)
     # numerical errors can happen due to not-sharp 0 and 1 in empirical cdf
     ## also, when Crow dist is asked for ppf(1) it returns sys.max (similar for ppf(0))
+    print('DEBUGG y below:',y[y<=0.0])
+    print('DEBUGG y above:',y[y>=1.0])
     y[y >= 1.0] = 1.0 - np.finfo(float).eps
     y[y <= 0.0] = np.finfo(float).eps
     return y
@@ -714,6 +726,15 @@ class ARMA(supervisedLearning):
       @ In, data, np.array(float), values to fit to
       @ Out, params, dict, essential parameters for CDF
     """
+    # try fitting a beta distribution instead of using an empirical distribution
+    alpha, beta, loc, scale = stats.beta.fit(data)
+    print('DEBUGG a,b,l,s:',alpha, beta, loc, scale)
+    params = {'alpha': alpha,
+              'beta': beta,
+              'loc': loc,
+              'scale': scale}
+    return params
+    #### OLD ####
     # caluclate number of bins
     nBins = self._computeNumberOfBins(data)
     # construct histogram
@@ -724,7 +745,9 @@ class ARMA(supervisedLearning):
     integrated = np.cumsum(counts)*np.average(widths)
     # set lowest value as first entry,
     ## from Jun implementation, min of CDF set to starting point for numerical issues
+    print('DEBUGG integrated preadd',len(integrated))
     cdf = np.insert(integrated, 0, integrated[0])
+    print('DEBUGG integrated postadd',len(cdf))
     # store parameters
     params = {'bins':edges,
               'cdf':cdf}
