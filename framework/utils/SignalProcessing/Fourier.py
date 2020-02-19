@@ -32,7 +32,7 @@ class Fourier(SignalProcessor):
       @ Out, spec, InputData.ParameterInput, specs class with acceptable options for this object
     """
     spec = SignalProcessor.getInputSpecification()
-    # TODO
+    spec.addSub(InputData.parameterInputFactory('periods', contentType=InputTypes.FloatListType))
     return spec
 
   def __init__(self):
@@ -42,6 +42,7 @@ class Fourier(SignalProcessor):
       @ Out, None
     """
     SignalProcessor.__init__(self)
+    self._bases = []
 
   def handleInput(self, specs):
     """
@@ -49,7 +50,8 @@ class Fourier(SignalProcessor):
       @ In, specs, InputData.ParameterInput, defined specifications
       @ Out, None
     """
-    self.name = specs.parameterValues['name']
+    SignalProcessor.handleInput(self, specs)
+    self._bases = specs.findFirst('bases').value
 
   @abc.abstractmethod
   def train(self, signal, **options):
