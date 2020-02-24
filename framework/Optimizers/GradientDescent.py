@@ -164,7 +164,7 @@ class GradientDescent(Sampled):
     # _protected
     self._gradientInstance = None  # instance of GradientApproximater
     self._stepInstance = None      # instance of StepManipulator
-    self._acceotInstance = None    # instance of AcceptanceCondition
+    self._acceptInstance = None    # instance of AcceptanceCondition
     self._gradProximity = 0.01     # TODO user input, the proximity for gradient evaluations
     # history trackers, by traj, are deques (-1 is most recent)
     self._gradHistory = {}         # gradients
@@ -513,6 +513,15 @@ class GradientDescent(Sampled):
     # GRAD POINTS
     # collect grad points
     gradPoints, gradInfos = self._gradientInstance.chooseEvaluationPoints(opt, stepSize)
+    # fix up grad points for violations
+    for gPoint in gradPoints:
+      # TODO should we let the GradientDescent handle boundary constraints?
+      #  -> if so, should the GradientApproximator get a chance to check the modifications and
+      #     update the gradInfos?
+      #  -> if not, wouldn't that result in duplicate code here and in the GradApprox?
+      #  for now, handle it here and pass to the GradApprox for updates
+      new, modded = self._applyBoundaryConstraints(gPoint)
+      # check dx to make sure it's not too small?
     for i, grad in enumerate(gradPoints):
       self._submitRun(grad, traj, step, 'grad_{}'.format(i), moreInfo=gradInfos[i])
 
