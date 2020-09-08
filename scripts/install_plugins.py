@@ -22,7 +22,7 @@
 #  python install_plugins -s path/to/plugin -f
 import os
 import sys
-import shutil
+import subprocess
 import argparse
 import plugin_handler as pluginHandler
 
@@ -41,6 +41,8 @@ parser.add_argument('-a', '--all', dest='doAll', action='store_true',
                     help='install all standard RAVEN plugins available (overrides -s)')
 parser.add_argument('--avail', dest='showAvail', action='store_true',
                     help='show all available standard RAVEN plugins and exit')
+parser.add_argument('--clean', dest='clean', action='store_true',
+                    help='remove existing installed plugins completely (reset option)')
 args = parser.parse_args()
 
 # -> manually add to install list for "all"
@@ -48,6 +50,55 @@ args = parser.parse_args()
 # PRAPlugin can be moved once it is in a separate repository.
 manualAddedPlugins = ['PRAplugin', 'ExamplePlugin']
 # END TEMPORARY FIXME
+
+def cleanPluginDir(ravenDir, builtIns, available):
+  """
+    Empties the plugin directory of non-essential entries (including all remote plugins)
+    @ In, ravenDir, str, path to main RAVEN directory (plugins are in ravenDir/plugins)
+    @ In, builtIns, list, list of built-in plugins (not remote repositories)
+    @ In, available, list, list of available submodule names
+    @ Out, None
+  """
+  # what's in the plugins folder, that isn't absolutely necessary?
+  pluginDir = os.path.join(ravenDir, 'plugins')
+  os.chdir(pluginDir)
+  existsInPluginsDir = os.popen('ls | grep -Ev "{m}|plugin_directory.xml"'
+                                .format(m='|'.join(builtIns))).read().split('\n')
+  existingPlugins = [x for x in existsInPluginsDir if x in available]
+  existingOther = [x for x in existsInPluginsDir if (x not in available and x.strip() != '')]
+  # clear out existing plugins
+  for entry in existingPlugins:
+    fullEntry = os.path.join(pluginDir, entry)
+    print('RAVEN PLUGIN INSTALLER: deinitializing "{}" ...'.format(entry))
+    command = ['git', 'submodule', '--quiet', 'deinit', '-f', entry]
+    res = subprocess.call(command)
+    if res != 0:
+      print('RAVEN PLUGIN INSTALLER ERROR: Failed to deinitialize plugin "{}" with code {}!'.format(fullEntry, res))
+    else:
+      print('RAVEN PLUGIN INSTALLER: ... deinitialized "{}"'.format(fullEntry))
+  # clear out other stuff
+  for entry in existingOther:
+    fullEntry = os.path.join(pluginDir, entry)
+    if os.path.isfile(entry):
+      print('RAVEN PLUGIN INSTALLER: removing file "{}"'.format(entry))
+      command = ['rm', '-f', fullEntry]
+      res = subprocess.call(fullEntry)
+      if res != 0:
+        print('RAVEN PLUGIN INSTALLER ERROR: Failed to remove file "{}" with code {}!'.format(fullEntry, res))
+      else:
+        print('RAVEN PLUGIN INSTALLER: ... removed "{}"'.format(fullEntry))
+    elif os.path.isdir(entry):
+      print('RAVEN PLUGIN INSTALLER: removing dir "{}"'.format(entry))
+      command = ['rm', '-rf', fullEntry]
+      res = subprocess.call(command)
+      if res != 0:
+        print('RAVEN PLUGIN INSTALLER ERROR: Failed to remove dir "{}" with code {}!'.format(fullEntry, res))
+      else:
+        print('RAVEN PLUGIN INSTALLER: ... removed "{}"'.format(fullEntry))
+    else:
+      print('RAVEN PLUGIN INSTALLER ERROR: unrecognized object type for "{}"; not removing!'.format(fullEntry))
+    # TODO check that folder is clear?
+  print('RAVEN PLUGIN INSTALLER: finished removing all plugins. Check messages above for errors, warnings.')
 
 if __name__ == '__main__':
   ### Design notes
@@ -68,29 +119,53 @@ if __name__ == '__main__':
   ## subsInit are the initialized ones
   subsInit = [x.split(' ')[1] for x in os.popen('git submodule status').read().split("\n") if x.strip() != '']
   submods = []
+  public = []
+  private = []
   for m, sub in enumerate(subsOut.split("\n")):
     if sub.strip() != '':
-      submods.append(os.path.basename(sub)[:-5]) #trim off path, ".path"
+      name = os.path.basename(sub)[:-5] #trim off path, ".path"
+      submods.append(name)
+      # sort into public, private repos
+      subUrl = os.popen('git config --file .gitmodules --get-regexp url {}'.format(name)).read().split()[1]
+      if 'github.com' in subUrl:
+        public.append(name)
+      elif 'hpcgitlab' in subUrl:
+        private.append(name)
 
-  if args.showAvail:
+  if args.clean:
+    # nuclear option: remove all submodules and unregister them
+    cleanPluginDir(cwd, manualAddedPlugins, submods)
+    sys.exit()
+
+  # show the available standard plugins
+  elif args.showAvail:
     print('Available standard plugins:')
-    for plug in submods:
-      # TODO descriptions, maybe? Might have to initialize for those
-      print('  -> {}'.format(plug))
+    template = '    -> {}'
+    print('  Built-In:')
+    for plug in manualAddedPlugins:
+      print(template.format(plug))
+    print('  Public:')
+    for plug in public:
+      print(template.format(plug))
+    print('  Private:')
+    for plug in private:
+      print(template.format(plug))
     sys.exit()
 
   # if requested "all" install, update sources
-  if args.doAll:
-    submods.extend(manualAddedPlugins)
-    args.source_dir = submods
+  elif args.doAll:
+    args.source_dir = public + private + manualAddedPlugins
+
+  # no command given; print help and exit
   elif not args.source_dir:
     returnCode += 1
     parser.print_help()
     sys.exit(returnCode)
 
+  # now the desired plugins to install have been selected, so check them
+  ## they can either be paths to plugins, or names of standard plugins
   sources = []
   failedSources = []
-  # check legitimacy of plugin directories
   for s, sourceDir in enumerate(args.source_dir):
     print('Initializing plugin "{}"'.format(sourceDir))
     loc = os.path.abspath(sourceDir)
@@ -101,6 +176,8 @@ if __name__ == '__main__':
       if sourceDir not in subsInit:
         # initialize it
         print(' ... initializing plugin submodule {} ...'.format(sourceDir))
+        # TODO if private, add timeout? Is there a way to check for access to hpclogin by ping?
+        if sourceDir in publicSubmods:
         os.popen('git submodule update --init plugins/{}'.format(sourceDir)).read()
       okay = True
       msgs = []
@@ -129,6 +206,7 @@ if __name__ == '__main__':
     existing, _ = zip(*installed)
   else:
     existing = []
+
   print('Installing plugins ...')
   for plugDir in sources:
     name = os.path.basename(plugDir)
