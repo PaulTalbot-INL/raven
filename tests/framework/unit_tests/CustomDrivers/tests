@@ -1,0 +1,6 @@
+[Tests]
+  [./TestPythonRaven]
+    type = 'RavenPython'
+    input = 'TestPythonRaven.py'
+  [../]
+[]
