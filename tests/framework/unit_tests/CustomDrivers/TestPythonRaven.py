@@ -70,13 +70,13 @@ class TestPythonRaven(unittest.TestCase):
   # ********************
   # Workflows
   #
-  def test_loadXML(self):
+  def test_loadXMLFile(self):
     """ Load an XML Workflow. """
-    self.raven.loadWorkflowFromXML(os.path.join(frameworkTestDir, 'test_Lorentz.xml'))
+    self.raven.loadWorkflowFromFile(os.path.join(frameworkTestDir, 'test_Lorentz.xml'))
 
   def test_runXML(self):
     """ Run an XML Workflow. """
-    self.raven.loadWorkflowFromXML(os.path.join(frameworkTestDir, 'test_Lorentz.xml'))
+    self.raven.loadWorkflowFromFile(os.path.join(frameworkTestDir, 'test_Lorentz.xml'))
     code = self.raven.runWorkflow()
     self.assertEqual(code, 0)
 

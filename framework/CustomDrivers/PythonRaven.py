@@ -45,7 +45,7 @@ class Raven:
   # ********************
   # API
   #
-  def loadWorkflowFromXML(self, xmlFile):
+  def loadWorkflowFromFile(self, xmlFile):
     """
       Loads the target XML file as a workflow (simulation instance)
       @ In, xmlFile, string, target xml file to load (cwd?)
@@ -67,6 +67,23 @@ class Raven:
     """
     returnCode = self._simulation.run()
     return returnCode
+
+  def getEntity(self, kind, name):
+    """
+      Return an entity from RAVEN simulation
+      @ In, kind, str, type of entity (e.g. DataObject, Sampler)
+      @ In, name, str, identifier for entity (i.e. name of the entity)
+      @ Out, entity, instance, RAVEN instance (None if not found)
+    """
+    # TODO is this the fastest way to get-and-check objects?
+    kindGroup = self._simulation.entities.get(kind, None)
+    if kindGroup is None:
+      raise KeyError(f'Entity kind "{kind}" not recognized! Found: {list(self._simulation.entities.keys())}')
+    entity = kindGroup.get(name, None)
+    if entity is None:
+      raise KeyError(f'No entity named "{name}" found among "{kind}" entities! Found: {list(self._simulation.entities[kind].keys())}')
+    return entity
+
 
   # ********************
   # UTILITIES
