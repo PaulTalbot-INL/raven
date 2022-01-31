@@ -84,7 +84,7 @@ class MonteCarlo(ForwardSampler):
     self.samplingType = None
     self.limit = None
 
-  def localInputAndChecks(self,xmlNode, paramInput):
+  def localInputAndChecks(self, xmlNode, paramInput):
     """
       Class specific xml inputs will be read here and checked for validity.
       @ In, xmlNode, xml.etree.ElementTree.Element, The xml element node that will be checked against the available options specific to this Sampler.
@@ -178,11 +178,12 @@ class MonteCarlo(ForwardSampler):
       self.inputInfo['ProbabilityWeight' ] = 1.0 #MC weight is 1/N => weight is one
     self.inputInfo['SamplerType'] = 'MonteCarlo'
 
-  def _localHandleFailedRuns(self,failedRuns):
+  def _localHandleFailedRuns(self, failedRuns, terminateOnFailedRuns):
     """
       Specialized method for samplers to handle failed runs.  Defaults to failing runs.
       @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      @ In, terminateOnFailedRuns, bool, if True then raise an error if any runs failed (ignored in MC)
       @ Out, None
     """
-    if len(failedRuns)>0:
-      self.raiseADebug('  Continuing with reduced-size Monte-Carlo sampling.')
+    if len(failedRuns) > 0:
+      self.raiseADebug('  Continuing with reduced-size Monte-Carlo sampling. Bias may have been introduced.')

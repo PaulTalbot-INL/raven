@@ -77,6 +77,7 @@ class Step(utils.metaclass_insert(abc.ABCMeta, BaseEntity, InputDataUser)):
     # how to handle failed runs. By default, the step fails.
     # If the attribute "repeatFailureRuns" is inputted, a certain number of repetitions are going to be performed
     self.failureHandling = {"fail":True, "repetitions":0, "perturbationFactor":0.0, "jobRepetitionPerformed":{}}
+    self.terminateOnFailedRuns = True
     self.printTag = 'STEPS'
     self._clearRunDir = None
 
@@ -109,6 +110,14 @@ class Step(utils.metaclass_insert(abc.ABCMeta, BaseEntity, InputDataUser)):
     inputSpecification.addParam("pauseAtEnd", InputTypes.StringType)
     inputSpecification.addParam("fromDirectory", InputTypes.StringType)
     inputSpecification.addParam("repeatFailureRuns", InputTypes.StringType)
+    inputSpecification.addParam("ignoreFailedRuns", InputTypes.BoolType,
+        descr=r"""By default, RAVEN will terminate if a \xmlNode{Step} has failed runs and the
+              \xmlNode{Sampler} or \xmlNode{Model}
+              does not have a way to handle these failures. If this flag is set to \xmlString{True},
+              then RAVEN will not terminate and will attempt to continue regardless of unhandled
+              failed runs. WARNING This flag should never be set to False if the samples will be
+              used for statistics-based postprocessing, as the resulting weights will not be
+              accurate! \default{False}""")
     inputSpecification.addParam("clearRunDir", InputTypes.BoolType,
         descr=r"""indicates whether the run directory should be cleared (removed) before beginning
               the Step calculation. The run directory has the same name as the Step and is located
@@ -199,6 +208,10 @@ class Step(utils.metaclass_insert(abc.ABCMeta, BaseEntity, InputDataUser)):
         self.raiseAnError(IOError,'In Step named '+self.name+' it was not possible to cast "repetitions" attribute into an integer!')
       #if self.failureHandling['perturbationFactor'] is None:
       #  self.raiseAnError(IOError,'In Step named '+self.name+' it was not possible to cast "perturbationFactor" attribute into a float!')
+    if 'ignoreFailedRuns' in paramInput.parameterValues:
+      # NOTE: easier for the user to think in terms of "ignore or don't ignore"
+      #       but easier for developer to think in terms of "terminate or don't terminate"
+      self.terminateOnFailedRuns = not paramInput['ignoreFailedRuns']
     self._localInputAndCheckParam(paramInput)
     if None in self.parList:
       self.raiseAnError(IOError,'A problem was found in  the definition of the step '+str(self.name))

@@ -1087,18 +1087,20 @@ class Sampler(utils.metaclass_insert(abc.ABCMeta, BaseEntity), Assembler, InputD
     """
     pass
 
-  def finalizeSampler(self,failedRuns):
+  def finalizeSampler(self, failedRuns, terminateOnFailedRuns):
     """
       Method called at the end of the Step when no more samples will be taken.  Closes out sampler for step.
       @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      @ In, terminateOnFailedRuns, bool, if True then raise an error if any runs failed
       @ Out, None
     """
-    self.handleFailedRuns(failedRuns)
+    self.handleFailedRuns(failedRuns, terminateOnFailedRuns)
 
-  def handleFailedRuns(self,failedRuns):
+  def handleFailedRuns(self, failedRuns, terminateOnFailedRuns):
     """
       Collects the failed runs from the Step and allows samples to handle them individually if need be.
       @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      @ In, terminateOnFailedRuns, bool, if True then raise an error if any runs failed
       @ Out, None
     """
     self.raiseADebug('===============')
@@ -1120,16 +1122,22 @@ class Sampler(utils.metaclass_insert(abc.ABCMeta, BaseEntity), Assembler, InputD
         #     self.raiseADebug('         ',v,':',k)
     else:
       self.raiseADebug('All runs completed without returning errors.')
-    self._localHandleFailedRuns(failedRuns)
+    self._localHandleFailedRuns(failedRuns, terminateOnFailedRuns)
     self.raiseADebug('===============')
     self.raiseADebug('  END SUMMARY  ')
     self.raiseADebug('===============')
 
-  def _localHandleFailedRuns(self,failedRuns):
+  def _localHandleFailedRuns(self, failedRuns, terminateOnFailedRuns):
     """
       Specialized method for samplers to handle failed runs.  Defaults to failing runs.
       @ In, failedRuns, list, list of JobHandler.ExternalRunner objects
+      @ In, terminateOnFailedRuns, bool, if True then raise an error if any runs failed
       @ Out, None
     """
-    if len(failedRuns)>0:
-      self.raiseAnError(IOError,'There were failed runs; aborting RAVEN.')
+    if failedRuns:
+      if terminateOnFailedRuns:
+        self.raiseAnError(IOError,'There were failed runs; aborting RAVEN.')
+      else:
+        self.raiseAWarning('There were failed runs! However, "ignoreFailedRuns" is "True"; continuing. ' +
+                          f'WARNING: Samples from Step "{self.name}" SHOULD NEVER be used in statistical processing, ' +
+                           'as the weights are no longer accurate!')
