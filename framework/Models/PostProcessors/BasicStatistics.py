@@ -14,10 +14,8 @@
 """
 Created on July 10, 2013
 
-@author: alfoa, wangc
+@author: alfoa, wangc, dgarrett622
 """
-from __future__ import division, print_function , unicode_literals, absolute_import
-
 #External Modules---------------------------------------------------------------
 import numpy as np
 import os
@@ -25,7 +23,7 @@ import copy
 from collections import OrderedDict, defaultdict
 import six
 import xarray as xr
-
+import scipy.stats as stats
 #External Modules End-----------------------------------------------------------
 
 #Internal Modules---------------------------------------------------------------
@@ -55,11 +53,12 @@ class BasicStatistics(PostProcessorInterface):
                 'higherPartialVariance',   # Statistic metric not available yet
                 'higherPartialSigma',      # Statistic metric not available yet
                 'lowerPartialSigma',       # Statistic metric not available yet
-                'lowerPartialVariance'    # Statistic metric not available yet
+                'lowerPartialVariance'     # Statistic metric not available yet
                 ]
   vectorVals = ['sensitivity',
                 'covariance',
                 'pearson',
+                'spearman',
                 'NormalizedSensitivity',
                 'VarianceDependentSensitivity']
   # quantities that the standard error can be computed
@@ -68,7 +67,8 @@ class BasicStatistics(PostProcessorInterface):
                 'variance_ste',
                 'sigma_ste',
                 'skewness_ste',
-                'kurtosis_ste']
+                'kurtosis_ste',
+                'percentile_ste']
 
   @classmethod
   def getInputSpecification(cls):
@@ -266,37 +266,62 @@ class BasicStatistics(PostProcessorInterface):
     inputMetaKeys = []
     outputMetaKeys = []
     for metric, infos in self.toDo.items():
-      steMetric = metric + '_ste'
-      if steMetric in self.steVals:
-        for info in infos:
-          prefix = info['prefix']
-          for target in info['targets']:
-            metaVar = prefix + '_ste_' + target if not self.outputDataset else metric + '_ste'
-            metaDim = inputObj.getDimensions(target)
-            if len(metaDim[target]) == 0:
-              inputMetaKeys.append(metaVar)
-            else:
-              outputMetaKeys.append(metaVar)
+      if metric in self.scalarVals + self.vectorVals:
+        steMetric = metric + '_ste'
+        if steMetric in self.steVals:
+          for info in infos:
+            prefix = info['prefix']
+            for target in info['targets']:
+              if metric == 'percentile':
+                for strPercent in info['strPercent']:
+                  metaVar = prefix + '_' + strPercent + '_ste_' + target if not self.outputDataset else metric + '_ste'
+                  metaDim = inputObj.getDimensions(target)
+                  if len(metaDim[target]) == 0:
+                    inputMetaKeys.append(metaVar)
+                  else:
+                    outputMetaKeys.append(metaVar)
+              else:
+                metaVar = prefix + '_ste_' + target if not self.outputDataset else metric + '_ste'
+                metaDim = inputObj.getDimensions(target)
+                if len(metaDim[target]) == 0:
+                  inputMetaKeys.append(metaVar)
+                else:
+                  outputMetaKeys.append(metaVar)
     metaParams = {}
     if not self.outputDataset:
       if len(outputMetaKeys) > 0:
         metaParams = {key:[self.pivotParameter] for key in outputMetaKeys}
     else:
       if len(outputMetaKeys) > 0:
-        params = {key:[self.pivotParameter,self.steMetaIndex] for key in outputMetaKeys + inputMetaKeys}
+        params = {}
+        for key in outputMetaKeys + inputMetaKeys:
+          # percentile standard error has additional index
+          if key == 'percentile_ste':
+            params[key] = [self.pivotParameter, self.steMetaIndex, 'percent']
+          else:
+            params[key] = [self.pivotParameter, self.steMetaIndex]
         metaParams.update(params)
       elif len(inputMetaKeys) > 0:
-        params = {key:[self.steMetaIndex] for key in inputMetaKeys}
+        params = {}
+        for key in inputMetaKeys:
+          # percentile standard error has additional index
+          if key == 'percentile_ste':
+            params[key] = [self.pivotParameter, self.steMetaIndex, 'percent']
+          else:
+            params[key] = [self.pivotParameter, self.steMetaIndex]
         metaParams.update(params)
     metaKeys = inputMetaKeys + outputMetaKeys
     self.addMetaKeys(metaKeys,metaParams)
 
-  def _handleInput(self, paramInput):
+  def _handleInput(self, paramInput, childVals=None):
     """
       Function to handle the parsed paramInput for this class.
       @ In, paramInput, ParameterInput, the already parsed input.
+      @ In, childVals, list, optional, quantities requested from child statistical object
       @ Out, None
     """
+    if childVals is None:
+      childVals = []
     self.toDo = {}
     for child in paramInput.subparts:
       tag = child.getName()
@@ -356,11 +381,12 @@ class BasicStatistics(PostProcessorInterface):
       elif tag == "multipleFeatures":
         self.multipleFeatures = child.value
       else:
-        self.raiseAWarning('Unrecognized node in BasicStatistics "',tag,'" has been ignored!')
+        if tag not in childVals:
+          self.raiseAWarning('Unrecognized node in BasicStatistics "',tag,'" has been ignored!')
 
     assert (len(self.toDo)>0), self.raiseAnError(IOError, 'BasicStatistics needs parameters to work on! Please check input for PP: ' + self.name)
 
-  def __computePower(self, p, dataset):
+  def _computePower(self, p, dataset):
     """
       Compute the p-th power of weights
       @ In, p, int, the power
@@ -384,7 +410,7 @@ class BasicStatistics(PostProcessorInterface):
       @ In, weights, xarray.Dataset, probability weights of all input variables
       @ Out, vp, xarray.Dataset, the sum of p-th power of weights
     """
-    vp = self.__computePower(p,weights)
+    vp = self._computePower(p,weights)
     vp = vp.sum()
     return vp
 
@@ -450,7 +476,7 @@ class BasicStatistics(PostProcessorInterface):
     """
     if dim is None:
       dim = self.sampleTag
-    vr = self.__computePower(2.0, variance)
+    vr = self._computePower(2.0, variance)
     if pbWeight is not None:
       unbiasCorr = self.__computeUnbiasedCorrection(4,pbWeight) if not self.biased else 1.0
       vp = 1.0/self.__computeVp(1,pbWeight)
@@ -483,7 +509,7 @@ class BasicStatistics(PostProcessorInterface):
     """
     if dim is None:
       dim = self.sampleTag
-    vr = self.__computePower(1.5, variance)
+    vr = self._computePower(1.5, variance)
     if pbWeight is not None:
       unbiasCorr = self.__computeUnbiasedCorrection(3,pbWeight) if not self.biased else 1.0
       vp = 1.0/self.__computeVp(1,pbWeight)
@@ -590,7 +616,6 @@ class BasicStatistics(PostProcessorInterface):
     except IndexError:
       result = sortedWeightsAndPoints[indexL,1]
     return result
-
 
   def __runLocal(self, inputData):
     """
@@ -731,7 +756,7 @@ class BasicStatistics(PostProcessorInterface):
     metric = 'sigma'
     if len(needed[metric]['targets'])>0:
       self.raiseADebug('Starting "'+metric+'"...')
-      sigmaDS = self.__computePower(0.5,calculations['variance'][list(needed[metric]['targets'])])
+      sigmaDS = self._computePower(0.5,calculations['variance'][list(needed[metric]['targets'])])
       self.calculations[metric] = sigmaDS
       calculations[metric] = sigmaDS
     #
@@ -807,7 +832,7 @@ class BasicStatistics(PostProcessorInterface):
     metric = 'lowerPartialSigma'
     if len(needed[metric]['targets'])>0:
       self.raiseADebug('Starting "'+metric+'"...')
-      lpsDS = self.__computePower(0.5,calculations['lowerPartialVariance'][list(needed[metric]['targets'])])
+      lpsDS = self._computePower(0.5,calculations['lowerPartialVariance'][list(needed[metric]['targets'])])
       calculations[metric] = lpsDS
     #
     # higherPartialVariance
@@ -827,17 +852,22 @@ class BasicStatistics(PostProcessorInterface):
     metric = 'higherPartialSigma'
     if len(needed[metric]['targets'])>0:
       self.raiseADebug('Starting "'+metric+'"...')
-      hpsDS = self.__computePower(0.5,calculations['higherPartialVariance'][list(needed[metric]['targets'])])
+      hpsDS = self._computePower(0.5,calculations['higherPartialVariance'][list(needed[metric]['targets'])])
       calculations[metric] = hpsDS
 
     ############################################################
-    # compute standard error for expectedValue
+    # Begin Standard Error Calculations
+    #
+    # Reference for standard error calculations (including percentile):
+    # B. Harding, C. Tremblay and D. Cousineau, "Standard errors: A review and evaluation of
+    # standard error estimators using Monte Carlo simulations", The Quantitative Methods of
+    # Psychology, Vol. 10, No. 2 (2014)
     ############################################################
     metric = 'expectedValue'
     if len(needed[metric]['targets'])>0:
       self.raiseADebug('Starting calculate standard error on"'+metric+'"...')
       if self.pbPresent:
-        factor = self.__computePower(0.5,calculations['equivalentSamples'])
+        factor = self._computePower(0.5,calculations['equivalentSamples'])
       else:
         factor = np.sqrt(self.sampleSize)
       calculations[metric+'_ste'] = calculations['sigma'][list(needed[metric]['targets'])]/factor
@@ -849,7 +879,7 @@ class BasicStatistics(PostProcessorInterface):
       if self.pbPresent:
         en = calculations['equivalentSamples'][varList]
         factor = 2.0 /(en - 1.0)
-        factor = self.__computePower(0.5,factor)
+        factor = self._computePower(0.5,factor)
       else:
         factor = np.sqrt(2.0/(float(self.sampleSize) - 1.0))
       calculations[metric+'_ste'] = calculations['sigma'][varList]**2 * factor
@@ -861,7 +891,7 @@ class BasicStatistics(PostProcessorInterface):
       if self.pbPresent:
         en = calculations['equivalentSamples'][varList]
         factor = 2.0 * (en - 1.0)
-        factor = self.__computePower(0.5,factor)
+        factor = self._computePower(0.5,factor)
       else:
         factor = np.sqrt(2.0 * (float(self.sampleSize) - 1.0))
       calculations[metric+'_ste'] = calculations['sigma'][varList] / factor
@@ -879,7 +909,7 @@ class BasicStatistics(PostProcessorInterface):
       if self.pbPresent:
         en = calculations['equivalentSamples'][varList]
         factor = 6.*en*(en-1.)/((en-2.)*(en+1.)*(en+3.))
-        factor = self.__computePower(0.5,factor)
+        factor = self._computePower(0.5,factor)
         calculations[metric+'_ste'] = xr.full_like(calculations[metric],1.0) * factor
       else:
         en = float(self.sampleSize)
@@ -892,8 +922,8 @@ class BasicStatistics(PostProcessorInterface):
       varList = list(needed[metric]['targets'])
       if self.pbPresent:
         en = calculations['equivalentSamples'][varList]
-        factor1 = self.__computePower(0.5,6.*en*(en-1.)/((en-2.)*(en+1.)*(en+3.)))
-        factor2 = self.__computePower(0.5,(en**2-1.)/((en-3.0)*(en+5.0)))
+        factor1 = self._computePower(0.5,6.*en*(en-1.)/((en-2.)*(en+1.)*(en+3.)))
+        factor2 = self._computePower(0.5,(en**2-1.)/((en-3.0)*(en+5.0)))
         factor = 2.0 * factor1 * factor2
         calculations[metric+'_ste'] = xr.full_like(calculations[metric],1.0) * factor
       else:
@@ -957,6 +987,46 @@ class BasicStatistics(PostProcessorInterface):
         percentileSet = dataSet.quantile(percent,dim=self.sampleTag,interpolation='lower')
         percentileSet = percentileSet.rename({'quantile':'percent'})
       calculations[metric] = percentileSet
+
+      # because percentile is different, calculate standard error here
+      self.raiseADebug('Starting calculate standard error on "'+metric+'"...')
+      percentileSteSet = xr.Dataset()
+      calculatedPercentiles = calculations[metric]
+      relWeight = pbWeights[list(needed[metric]['targets'])]
+      for target in needed[metric]['targets']:
+        targWeight = relWeight[target].values
+        en = targWeight.sum()**2/np.sum(targWeight**2)
+        targDa = dataSet[target]
+        if self.pivotParameter in targDa.sizes.keys():
+          percentileSte = []
+          for pct in percent:
+            subPercentileSte = []
+            factor = np.sqrt(pct*(1.0 - pct)/en)
+            for label, group in targDa.groupby(self.pivotParameter):
+              if group.values.min() == group.values.max():
+                # all values are the same
+                subPercentileSte.append(0.0)
+              else:
+                # get KDE
+                kde = stats.gaussian_kde(group.values, weights=targWeight)
+                val = calculatedPercentiles[target].sel(**{'percent': pct, self.pivotParameter: label}).values
+                subPercentileSte.append(factor/kde(val)[0])
+            percentileSte.append(subPercentileSte)
+          da = xr.DataArray(percentileSte, dims=('percent', self.pivotParameter), coords={'percent': percent, self.pivotParameter: self.pivotValue})
+          percentileSteSet[target] = da
+        else:
+          calcPercentiles = calculatedPercentiles[target]
+          if targDa.values.min() == targDa.values.max():
+            # distribution is a delta function, so no KDE construction
+            percentileSte = list(np.zeros(calcPercentiles.shape))
+          else:
+            # get KDE
+            kde = stats.gaussian_kde(targDa.values, weights=targWeight)
+            factor = np.sqrt(np.array(percent)*(1.0 - np.array(percent))/en)
+            percentileSte = list(factor/kde(calcPercentiles.values))
+          da = xr.DataArray(percentileSte, dims=('percent'), coords={'percent': percent})
+          percentileSteSet[target] = da
+      calculations[metric+'_ste'] = percentileSteSet
 
     def startVector(metric):
       """
@@ -1061,6 +1131,8 @@ class BasicStatistics(PostProcessorInterface):
         @ In, desired, list(str), list of parameters to extract from covariance matrix
         @ Out, reducedCov, xarray.DataArray, reduced covariance matrix
       """
+      if self.pivotParameter in desired:
+        self.raiseAnError(RuntimeError, 'The pivotParameter "{}" is among the parameters requested for performing statistics. Please remove!'.format(self.pivotParameter))
       reducedCov = calculations['covariance'].sel(**{'targets':desired,'features':desired})
       return reducedCov
     #
@@ -1086,6 +1158,38 @@ class BasicStatistics(PostProcessorInterface):
         corrMatrix = self.corrCoeff(reducedCovar.values)
         da = xr.DataArray(corrMatrix, dims=('targets','features'), coords={'targets':targCoords,'features':targCoords})
         calculations[metric] = da
+    #
+    # spearman matrix
+    #
+    # see RAVEN theory manual for a detailed explaination
+    # of the formulation used here
+    #
+    metric = 'spearman'
+    targets,features,skip = startVector(metric)
+    #NOTE sklearn expects the transpose of what we usually do in RAVEN, so #samples by #features
+    if not skip:
+      #for spearman matrix, we don't use numpy/scipy methods to calculate matrix operations,
+      #so we loop over targets and features
+      params = list(set(targets).union(set(features)))
+      dataSet = inputDataset[params]
+      relWeight = pbWeights[params] if self.pbPresent else None
+      if self.pivotParameter in dataSet.sizes.keys():
+        dataSet = dataSet.to_array().transpose(self.pivotParameter,self.sampleTag,'variable')
+        featSet = dataSet.sel(**{'variable':features}).values
+        targSet = dataSet.sel(**{'variable':targets}).values
+        pivotVals = dataSet.coords[self.pivotParameter].values
+        da = None
+        for i in range(len(pivotVals)):
+          ds = self.spearmanCorrelation(features,targets,featSet[i,:,:],targSet[i,:,:],relWeight)
+          da = ds if da is None else xr.concat([da,ds], dim=self.pivotParameter)
+        da.coords[self.pivotParameter] = pivotVals
+      else:
+        # construct target and feature matrices
+        dataSet = dataSet.to_array().transpose(self.sampleTag,'variable')
+        featSet = dataSet.sel(**{'variable':features}).values
+        targSet = dataSet.sel(**{'variable':targets}).values
+        da = self.spearmanCorrelation(features,targets,featSet,targSet,relWeight)
+      calculations[metric] = da
     #
     # VarianceDependentSensitivity matrix
     # The formula for this calculation is coming from: http://www.math.uah.edu/stat/expect/Matrices.html
@@ -1130,7 +1234,16 @@ class BasicStatistics(PostProcessorInterface):
     for metric, ds in calculations.items():
       if metric in self.scalarVals + self.steVals +['equivalentSamples'] and metric !='samples':
         calculations[metric] = ds.to_array().rename({'variable':'targets'})
-    outputSet = xr.Dataset(data_vars=calculations)
+    # in here we fill the NaN with "nan". In this way, we are sure that even if
+    # there might be NaN in any raw for a certain timestep we do not drop the variable
+    # In the past, in a condition such as:
+    # time, A, B, C
+    #    0, 1, NaN, 1
+    #    1, 1, 0.5, 1
+    #    2, 1, 2.0, 2
+    # the variable B would have been dropped (in the printing stage)
+    # with this modification, this should not happen anymore
+    outputSet = xr.Dataset(data_vars=calculations).fillna("nan")
 
     if self.outputDataset:
       # Add 'RAVEN_sample_ID' to output dataset for consistence
@@ -1156,6 +1269,10 @@ class BasicStatistics(PostProcessorInterface):
                 varName = '_'.join([prefix,percent,target])
                 percentVal = float(percent)/100.
                 outputDict[varName] = np.atleast_1d(outputSet[metric].sel(**{'targets':target,'percent':percentVal}))
+                steMetric = metric + '_ste'
+                if steMetric in self.steVals:
+                  metaVar = '_'.join([prefix,percent,'ste',target])
+                  outputDict[metaVar] = np.atleast_1d(outputSet[steMetric].sel(**{'targets':target,'percent':percentVal}))
             else:
               #check if it was skipped for some reason
               skip = self.skipped.get(metric, None)
@@ -1286,6 +1403,51 @@ class BasicStatistics(PostProcessorInterface):
         sensCoef = covYX / covX
         senMatrix[:,p] = sensCoef
     da = xr.DataArray(senMatrix, dims=('targets','features'), coords={'targets':targCoords,'features':targCoords})
+    return da
+
+  def spearmanCorrelation(self, featVars, targVars, featSamples, targSamples, pbWeights):
+    """
+      This method computes the spearman correlation coefficients
+      @ In, featVars, list, list of feature variables
+      @ In, targVars, list, list of target variables
+      @ In, featSamples, numpy.ndarray, [#samples, #features] array of features
+      @ In, targSamples, numpy.ndarray, [#samples, #targets] array of targets
+      @ In, pbWeights, dataset, probability weights
+      @ Out, da, xarray.DataArray, contains the calculations of spearman coefficients
+    """
+    spearmanMat = np.zeros((len(targVars), len(featVars)))
+    wf, wt = None, None
+    # compute unbiased factor
+    if self.pbPresent:
+      fact = (self.__computeUnbiasedCorrection(2, self.realizationWeight)).to_array().values if not self.biased else 1.0
+      vp = self.__computeVp(1,self.realizationWeight)['ProbabilityWeight'].values
+      varianceFactor = fact*(1.0/vp)
+    else:
+      fact = 1.0 / (float(featSamples.shape[0]) - 1.0) if not self.biased else 1.0 / float(featSamples.shape[0])
+      varianceFactor = fact
+
+    for tidx, target in enumerate(targVars):
+      for fidx, feat in enumerate(featVars):
+        if self.pbPresent:
+          wf, wt = np.asarray(pbWeights[feat]), np.asarray(pbWeights[target])
+        rankFeature, rankTarget = mathUtils.rankData(featSamples[:,fidx],wf),  mathUtils.rankData(targSamples[:,tidx],wt)
+        # compute covariance of the ranked features
+        cov  = np.cov(rankFeature, y=rankTarget, aweights=wt)
+        covF = np.cov(rankFeature,y=rankFeature, aweights=wf)
+        covT = np.cov(rankTarget,y=rankTarget, aweights=wf)
+        # apply correction factor (for biased or unbiased) (off diagonal)
+        cov[~np.eye(2,dtype=bool)] *= fact
+        covF[~np.eye(2,dtype=bool)] *= fact
+        covT[~np.eye(2,dtype=bool)] *= fact
+        # apply correction factor (for biased or unbiased) (diagonal)
+        cov[np.eye(2,dtype=bool)] *= varianceFactor
+        covF[~np.eye(2,dtype=bool)] *= varianceFactor
+        covT[~np.eye(2,dtype=bool)] *= varianceFactor
+        # now we can compute the pearson of such pairs
+        spearman = (cov / np.sqrt(covF * covT))[-1,0]
+        spearmanMat[tidx,fidx] = spearman
+
+    da = xr.DataArray(spearmanMat, dims=('targets','features'), coords={'targets':targVars,'features':featVars})
     return da
 
   def run(self, inputIn):

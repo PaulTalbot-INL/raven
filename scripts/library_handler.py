@@ -17,6 +17,7 @@ Adopted from RavenUtils.py
 """
 import os
 import sys
+import re
 import platform
 import argparse
 import subprocess
@@ -111,6 +112,22 @@ def checkLibraries(buildReport=False):
   if buildReport:
     return messages
   return missing, notQA
+
+def parseVersion(versionString):
+  """
+    Parses a version string into its components
+    @ In, versionStirng, str, the version string to parse
+    @ Out, version, list, list of components as integers and strings
+  """
+  version = []
+  for part in re.split(r'([0-9]+|[a-z]+|\.)',versionString):
+    if len(part) == 0 or part == ".":
+      continue
+    try:
+      version.append(int(part))
+    except ValueError:
+      version.append(part)
+  return version
 
 def checkSameVersion(expected, received):
   """
@@ -441,7 +458,7 @@ def _readLibNode(libNode, config, toRemove, opSys, addOptional, limitSources, re
   # check limited sources
   libSource = libNode.attrib.get('source', None)
   if libSource is None:
-    libSource = 'conda' # DEFAULT
+    libSource = 'forge' # DEFAULT
   if limitSources is not None and libSource not in limitSources:
     return # nothing to do
   # otherwise, we have a valid request to handle
@@ -576,14 +593,9 @@ if __name__ == '__main__':
       equals = '='
       actionArgs = '--name {env} -y {src}'
       # which part of the install are we doing?
-      if args.subset == 'core':
+      if args.subset == 'core' or args.subset == 'forge':
         # from defaults
-        src = '-c defaults'
-        addOptional = args.addOptional
-        limit = ['conda']
-      elif args.subset == 'forge':
-        # take libs from conda-forge
-        src = '-c conda-forge '
+        src = '-c conda-forge'
         addOptional = args.addOptional
         limit = ['forge']
       elif args.subset == 'pip':

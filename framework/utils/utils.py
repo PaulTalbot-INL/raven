@@ -645,7 +645,7 @@ def find_crow(framework_dir):
     @ Out, None
   """
   try:
-    import crow_modules.distribution1Dpy2
+    import crow_modules.distribution1D
     return
   except:
     ravenDir = os.path.dirname(framework_dir)
@@ -700,13 +700,12 @@ def findCrowModule(name):
   # assert
   assert(name in availableCrowModules)
   # find the module
-  ext = 'py3' if sys.version_info.major > 2 else 'py2'
   try:
-    module = import_module("crow_modules.{}{}".format(name,ext))
+    module = import_module("crow_modules.{}".format(name))
   except (ImportError, ModuleNotFoundError) as ie:
     if not str(ie).startswith("No module named"):
       raise ie
-    module = import_module("{}{}".format(name,ext))
+    module = import_module("{}".format(name))
   return module
 
 def getPythonCommand():
@@ -1045,21 +1044,3 @@ def which(cmd):
           return name
   return None
 
-def orderClusterLabels(originalLables):
-  """
-    Regulates labels such that the first unique one to appear is 0, second one is 1, and so on.
-    e.g. [B, B, C, B, A, A, D] becomes [0, 0, 1, 0, 2, 2, 3]
-    @ In, originalLabels, list, the original labeling system
-    @ Out, labels, np.array(int), ordinal labels
-  """
-  labels = np.zeros(len(originalLabels), dtype=int)
-  oldToNew = {}
-  nextUsableLabel = 0
-  for l, old in enumerate(originalLabels):
-    new = oldToNew.get(old, None)
-    if new is None:
-      oldToNew[old] = nextUsableLabel
-      new = nextUsableLabel
-      nextUsableLabel += 1
-    labels[l] = new
-  return labels
