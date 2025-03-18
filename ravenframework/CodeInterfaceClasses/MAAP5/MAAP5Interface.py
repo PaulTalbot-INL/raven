@@ -17,22 +17,38 @@ Created on April 14, 2016
 @modified: picoco (The Ohio State University)
 '''
 
-from ..Generic.GenericCodeInterface import GenericCode
-import numpy as np
-from  ..Utilities import csvUtilities as csvU
-from ..Utilities import dynamicEventTreeUtilities as detU
 import csv
 import glob
 import os
-import copy
-import re
 import math
 import sys
 
+import pandas as pd
+
+from ..Generic.GenericCodeInterface import GenericCode
+from ..Utilities import csvUtilities as csvU
+from ..Utilities import dynamicEventTreeUtilities as detU
 class MAAP5(GenericCode):
   """
   Class for MAAP5 interface with RAVEN
   """
+  def __init__(self):
+    """
+      Constructor
+      @ In, None
+      @ Out, None
+    """
+    super().__init__()
+    self.include=''
+    self.tilastDict={} #{'folder_name':'tilast'} - this dictionary contains the last simulation time of each branch, this is necessary to define the correct restart time
+    self.branch = {} #{'folder_name':['variable branch','variable value']} where variable branch is the variable sampled for the current branch e.g. {det_1:[timeloca, 200]}
+    self.values = {} #{'folder_name':[['variable branch_1','variable value_1'],['variable branch_2','variable value_2']]} for each DET sampled variables
+    self.printInterval = ''  #value of the print interval
+    self.boolOutputVariables=[] #list of MAAP5 boolean variables of interest
+    self.contOutputVariables=[] #list of MAAP5 continuous variables of interest
+    self.multiBranchOccurred=[]
+    self.readPlotfile = False # whether we should write CSVs from plotfiles (D##) in RAVEN
+    self.stop = None
 
   def _readMoreXML(self,xmlNode):
     """
@@ -43,30 +59,22 @@ class MAAP5(GenericCode):
       @ Out, None.
     """
     GenericCode._readMoreXML(self,xmlNode)
-    self.include=''
-    self.tilastDict={} #{'folder_name':'tilast'} - this dictionary contains the last simulation time of each branch, this is necessary to define the correct restart time
-    self.branch = {} #{'folder_name':['variable branch','variable value']} where variable branch is the variable sampled for the current branch e.g. {det_1:[timeloca, 200]}
-    self.values = {} #{'folder_name':[['variable branch_1','variable value_1'],['variable branch_2','variable value_2']]} for each DET sampled variables
-    self.printInterval = ''  #value of the print interval
-    self.boolOutputVariables=[] #list of MAAP5 boolean variables of interest
-    self.contOutputVariables=[] #list of MAAP5 continuous variables of interest
-###########
-    self.multiBranchOccurred=[]
-###########
     for child in xmlNode:
       if child.tag == 'includeForTimer':
-        if child.text != None:
+        if child.text is not None:
           self.include = child.text
-      if child.tag == 'boolMaapOutputVariables':
+      elif child.tag == 'boolMaapOutputVariables':
         #here we'll store boolean output MAAP variables to look for
-        if child.text != None:
+        if child.text is not None:
           self.boolOutputVariables = child.text.split(',')
-      if child.tag == 'contMaapOutputVariables':
+      elif child.tag == 'contMaapOutputVariables':
         #here we'll store boolean output MAAP variables to look for
-        if child.text != None:
+        if child.text is not None:
           self.contOutputVariables = child.text.split(',')
-      if child.tag == 'stopSimulation':
-        self.stop=child.text #this node defines if the MAAP5 simulation stop condition is: 'mission_time' or the occurrence of a given event e.g. 'IEVNT(691)'
+      elif child.tag == 'stopSimulation':
+        self.stop = child.text #this node defines if the MAAP5 simulation stop condition is: 'mission_time' or the occurrence of a given event e.g. 'IEVNT(691)'
+      elif child.tag == 'readPlotfile':
+        self.readPlotfile = bool(child.text) if child.text is not None else False
     if (len(self.boolOutputVariables)==0) and (len(self.contOutputVariables)==0):
       raise IOError('At least one of two nodes <boolMaapOutputVariables> or <contMaapOutputVariables> has to be specified')
 
@@ -85,14 +93,11 @@ class MAAP5(GenericCode):
       if Kwargs['RAVEN_parentID'] == 'None':
         self.oriInput(oriInputFiles) #original input files are checked only the first time
       self.stopSimulation(currentInputFiles, Kwargs)
-###########
       if Kwargs['RAVEN_parentID'] != 'None':
         print('Kwargs',Kwargs)
         self.restart(currentInputFiles, Kwargs['RAVEN_parentID'])
-###########
         if len(self.multiBranchOccurred)>0:
           self.multiBranchMethod(currentInputFiles, Kwargs)
-###########
         if str(Kwargs['prefix'].split('-')[-1]) != '1':
           self.modifyBranch(currentInputFiles, Kwargs)
     return GenericCode.createNewInput(self,currentInputFiles,oriInputFiles,samplerType,**Kwargs)
@@ -312,7 +317,6 @@ class MAAP5(GenericCode):
       fileobject.close()
       print ('RESTART FILE name has been corrected',restarFileCorrect)
 
-########################
   def modifyBranch(self,currentInputFiles,Kwargs):
     """
       This method is aimed to modify the branch in order to reflect the info
@@ -352,7 +356,16 @@ class MAAP5(GenericCode):
             fileobject.close()
             n=n+1
 
-########################
+  def createCSVfromPlot(self, prefix):
+    """
+      Reads MAAP5 plotfiles (D##) to create CSVs
+      @ In prefix, string, file prefix including path
+      @ Out, None
+    """
+    plotfiles = glob.glob(f'{prefix}.D*[0-9]')
+    for pf in plotfiles:
+      df = pd.read_csv(pf, delim_whitespace=True, skiprows=[0,2])
+      df.to_csv(f'{pf}.csv', index=False)
 
   def finalizeCodeOutput(self, command, output, workingDir):
     """
@@ -368,18 +381,21 @@ class MAAP5(GenericCode):
       @ In, workingDir, string, current working dir
       @ Out, output, string, output csv file containing the variables of interest specified in the input
     """
-    csvSimulationFiles=[]
-    realOutput=output.split("out~")[1] #rootname of the simulation files
+    csvSimulationFiles = []
+    realOutput = output.split("out~")[1] #rootname of the simulation files
     inp = os.path.join(workingDir,realOutput + ".inp") #input file of the simulation with the full path
-    filePrefixWithPath=os.path.join(workingDir,realOutput) #rootname of the simulation files with the full path
-    csvSimulationFiles=glob.glob(filePrefixWithPath+".d"+"*.csv") #list of MAAP output files with the evolution of continuous variables
-    mergeCSV=csvU.csvUtilityClass(csvSimulationFiles,1,";",True)
-    dataDict={}
-    dataDict=mergeCSV.mergeCsvAndReturnOutput({'variablesToExpandFrom':['TIME'],'returnAsDict':True})
-    timeFloat=dataDict['TIME']
+    filePrefixWithPath = os.path.join(workingDir,realOutput) #rootname of the simulation files with the full path
+    # if we need to read from plotfiles, do that conversion now
+    if self.readPlotfile:
+      self.createCSVfromPlot(filePrefixWithPath)
+    csvSimulationFiles = glob.glob(filePrefixWithPath+".d"+"*.csv") #list of MAAP output files with the evolution of continuous variables
+    mergeCSV = csvU.csvUtilityClass(csvSimulationFiles,1,";",True)
+    dataDict = {}
+    dataDict = mergeCSV.mergeCsvAndReturnOutput({'variablesToExpandFrom':['TIME'],'returnAsDict':True})
+    timeFloat = dataDict['TIME']
     #Here we'll read evolution of continous variables """
-    contVariableEvolution=[] #here we'll store the time evolution of MAAP continous variables
-    if len(self.contOutputVariables)>0:
+    contVariableEvolution = [] #here we'll store the time evolution of MAAP continous variables
+    if len(self.contOutputVariables) > 0:
       for variableName in self.contOutputVariables:
         try:
           (dataDict[variableName])
@@ -389,33 +405,33 @@ class MAAP5(GenericCode):
 
      #here we'll read boolean variables and transform them into continous"""
      # if the discrete variables of interest are into the csv file:
-    if len(self.boolOutputVariables)>0:
-      boolVariableEvolution=[]
+    if len(self.boolOutputVariables) > 0:
+      boolVariableEvolution = []
       for variable in self.boolOutputVariables:
-        variableName=str(variable)
+        variableName = str(variable)
         try:
           (dataDict[variableName])
         except:
           raise IOError('define the variable within MAAP5 plotfil: ',variableName)
         boolVariableEvolution.append(dataDict[variableName])
 
-    allVariableTags=[]
+    allVariableTags = []
     allVariableTags.append('TIME')
     if (len(self.contOutputVariables)>0):
       allVariableTags.extend(self.contOutputVariables)
     if (len(self.boolOutputVariables)>0):
       allVariableTags.extend(self.boolOutputVariables)
 
-    allVariableValues=[]
+    allVariableValues = []
     allVariableValues.append(dataDict['TIME'])
     if (len(self.contOutputVariables)>0):
       allVariableValues.extend(contVariableEvolution)
     if (len(self.boolOutputVariables)>0):
       allVariableValues.extend(boolVariableEvolution)
 
-    RAVENoutputFile=os.path.join(workingDir,output+".csv") #RAVEN will look for  output+'.csv'file but in the workingDir, so we need to append it to the filename
-    outputCSVfile=open(RAVENoutputFile,"w+")
-    csvwriter=csv.writer(outputCSVfile,delimiter=',')
+    RAVENoutputFile=os.path.join(workingDir, output+".csv") #RAVEN will look for  output+'.csv'file but in the workingDir, so we need to append it to the filename
+    outputCSVfile=open(RAVENoutputFile, "w+")
+    csvwriter=csv.writer(outputCSVfile, delimiter=',')
     csvwriter.writerow(allVariableTags)
     for i in range(len(allVariableValues[0])):
       row=[]

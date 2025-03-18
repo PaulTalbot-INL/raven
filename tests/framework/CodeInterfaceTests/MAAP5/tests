@@ -52,4 +52,11 @@
    rel_err = 0.0001
    skip = 'Requires new dataset from EDF'
  [../]
+ [./WriteCSVs]
+   type = 'RavenFramework'
+   input = 'test_write_csvs.xml'
+   csv = 'WriteCSVs/TODO.D##.csv'
+   test_interface_only = True
+   rel_err = 0.0001
+ [../]
 []
