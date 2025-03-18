@@ -363,6 +363,9 @@ class MAAP5(GenericCode):
       @ Out, None
     """
     plotfiles = glob.glob(f'{prefix}.D*[0-9]')
+    print('*'*80)
+    print('DEBUGG plotfiles:', plotfiles)
+    print('*'*80)
     for pf in plotfiles:
       df = pd.read_csv(pf, delim_whitespace=True, skiprows=[0,2])
       df.to_csv(f'{pf}.csv', index=False)
@@ -389,6 +392,9 @@ class MAAP5(GenericCode):
     if self.readPlotfile:
       self.createCSVfromPlot(filePrefixWithPath)
     csvSimulationFiles = glob.glob(filePrefixWithPath+".d"+"*.csv") #list of MAAP output files with the evolution of continuous variables
+    print('*'*80)
+    print('DEBUGG CSVs:', csvSimulationFiles)
+    print('*'*80)
     mergeCSV = csvU.csvUtilityClass(csvSimulationFiles,1,";",True)
     dataDict = {}
     dataDict = mergeCSV.mergeCsvAndReturnOutput({'variablesToExpandFrom':['TIME'],'returnAsDict':True})
