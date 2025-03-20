@@ -74,11 +74,7 @@ class MAAP5(GenericCode):
       elif child.tag == 'stopSimulation':
         self.stop = child.text #this node defines if the MAAP5 simulation stop condition is: 'mission_time' or the occurrence of a given event e.g. 'IEVNT(691)'
       elif child.tag == 'readPlotfile':
-        print('*'*80)
-        print(f'DEBUGG found readPlotfile, text is "{child.text}"')
         self.readPlotfile = bool(child.text) if child.text is not None else False
-        print(f'DEBUGG -> self.readPlotfile "{self.readPlotfile}"')
-        print('*'*80)
     if (len(self.boolOutputVariables)==0) and (len(self.contOutputVariables)==0):
       raise IOError('At least one of two nodes <boolMaapOutputVariables> or <contMaapOutputVariables> has to be specified')
 
@@ -367,12 +363,12 @@ class MAAP5(GenericCode):
       @ Out, None
     """
     plotfiles = glob.glob(f'{prefix}.D*[0-9]')
-    print('*'*80)
-    print('DEBUGG plotfiles:', plotfiles)
-    print('*'*80)
     for pf in plotfiles:
-      df = pd.read_csv(pf, delim_whitespace=True, skiprows=[0,2])
-      df.to_csv(f'{pf}.csv', index=False)
+      try:
+        df = pd.read_csv(pf, delim_whitespace=True, skiprows=[0,2])
+        df.to_csv(f'{pf}.csv', index=False)
+      except pd.errors.ParserError:
+        print(f'Failed to read plotfile "{pf}" as CSV. Skipping ...')
 
   def finalizeCodeOutput(self, command, output, workingDir):
     """
@@ -396,9 +392,6 @@ class MAAP5(GenericCode):
     if self.readPlotfile:
       self.createCSVfromPlot(filePrefixWithPath)
     csvSimulationFiles = glob.glob(filePrefixWithPath+".d"+"*.csv") #list of MAAP output files with the evolution of continuous variables
-    print('*'*80)
-    print('DEBUGG CSVs:', csvSimulationFiles)
-    print('*'*80)
     mergeCSV = csvU.csvUtilityClass(csvSimulationFiles,1,";",True)
     dataDict = {}
     dataDict = mergeCSV.mergeCsvAndReturnOutput({'variablesToExpandFrom':['TIME'],'returnAsDict':True})
