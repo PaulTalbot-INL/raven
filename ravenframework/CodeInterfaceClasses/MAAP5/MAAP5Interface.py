@@ -74,7 +74,11 @@ class MAAP5(GenericCode):
       elif child.tag == 'stopSimulation':
         self.stop = child.text #this node defines if the MAAP5 simulation stop condition is: 'mission_time' or the occurrence of a given event e.g. 'IEVNT(691)'
       elif child.tag == 'readPlotfile':
+        print('*'*80)
+        print(f'DEBUGG found readPlotfile, text is "{child.text}"')
         self.readPlotfile = bool(child.text) if child.text is not None else False
+        print(f'DEBUGG -> self.readPlotfile "{self.readPlotfile}"')
+        print('*'*80)
     if (len(self.boolOutputVariables)==0) and (len(self.contOutputVariables)==0):
       raise IOError('At least one of two nodes <boolMaapOutputVariables> or <contMaapOutputVariables> has to be specified')
 
